@@ -12,7 +12,7 @@ function emptyLoc() {
     address: '',
     accD: '', accN: '', mmD: '', mmN: '',   // 간단 모드용
     startHour: '9',                          // 상세 모드용 시작시간
-    accHourly: Array(15).fill(''),           // 상세 모드용 아큐웨더 시간별 값(15칸)
+    accHourly: Array(15).fill(null).map(() => ({ pop: '', mm: '' })), // 상세 모드용 아큐웨더 시간별 값(15칸 x {pop, mm})
     kma: null,
     kmaError: null,
     loading: false,
@@ -30,16 +30,16 @@ function fmtMm(v) {
   return `${s}mm`;
 }
 
-// 강수확률(%)에 따라 색을 진하게: 값이 높을수록 진한 파랑, 낮으면 옅게.
+// 강수확률(%)에 따라 색을 진하게: 원본 사진 톤(연한 파랑 계열)에 맞춰 톤 다운.
 function popColorStyle(rawVal) {
   if (rawVal === null || rawVal === undefined || rawVal === '') return { background: '#ffffff', color: '#999' };
   const num = parseFloat(String(rawVal).replace('%', ''));
   if (isNaN(num)) return { background: '#ffffff', color: '#999' };
-  if (num < 20) return { background: '#EAF3FB', color: '#2f5f8f' };
-  if (num < 40) return { background: '#CFE3F5', color: '#1f4f7f' };
-  if (num < 60) return { background: '#9DC8EA', color: '#123f66' };
-  if (num < 80) return { background: '#5E9FD6', color: '#ffffff' };
-  return { background: '#2E6DA4', color: '#ffffff' };
+  if (num < 20) return { background: '#EDF4FB', color: '#1a4fa0' };
+  if (num < 40) return { background: '#DCEAF7', color: '#1a4fa0' };
+  if (num < 60) return { background: '#C7DFF3', color: '#1a4fa0' };
+  if (num < 80) return { background: '#AFD1ED', color: '#1a4fa0' };
+  return { background: '#93BFE3', color: '#1a4fa0' };
 }
 
 export default function Home() {
@@ -51,11 +51,11 @@ export default function Home() {
   function update(i, key, val) {
     setLocations(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: val } : l));
   }
-  function updateHourly(i, hourIdx, val) {
+  function updateHourly(i, hourIdx, field, val) {
     setLocations(prev => prev.map((l, idx) => {
       if (idx !== i) return l;
       const next = [...l.accHourly];
-      next[hourIdx] = val;
+      next[hourIdx] = { ...next[hourIdx], [field]: val };
       return { ...l, accHourly: next };
     }));
   }
@@ -163,6 +163,17 @@ export default function Home() {
                     <div>응답에 실제로 있는 필드: {loc.kma.debug.itemKeys.join(', ')}</div>
                   </details>
                 )}
+                {loc.kma.hourly && (
+                  <details style={{ marginTop: 6, fontSize: 11, color: '#555' }}>
+                    <summary>시간별 원본값 보기 (디버그)</summary>
+                    <table style={{ marginTop: 4, borderCollapse: 'collapse', fontSize: 11 }}>
+                      <tbody>
+                        <tr>{loc.kma.hourly.map((h, idx) => <td key={idx} style={{ border: '1px solid #ddd', padding: '2px 4px' }}>{h.time.slice(0,2)}시</td>)}</tr>
+                        <tr>{loc.kma.hourly.map((h, idx) => <td key={idx} style={{ border: '1px solid #ddd', padding: '2px 4px' }}>{h.POP ?? '-'}%</td>)}</tr>
+                      </tbody>
+                    </table>
+                  </details>
+                )}
               </div>
             )}
 
@@ -187,12 +198,15 @@ export default function Home() {
 
             {detailMode && loc.kma && loc.kma.range && (
               <>
-                <div className="groupTitle">아큐웨더 (시간대별 직접입력, 강수확률 %)</div>
+                <div className="groupTitle">아큐웨더 (시간대별 직접입력 — 강수확률% / 강수량mm)</div>
                 <div className="hourlyGrid">
                   {loc.kma.range.map((pt, hIdx) => (
-                    <div className="field hourField" key={hIdx}>
-                      <label>{pt.hour}시</label>
-                      <input value={loc.accHourly[hIdx]} onChange={e => updateHourly(i, hIdx, e.target.value)} placeholder="%" />
+                    <div className="hourPair" key={hIdx}>
+                      <label className="hourPairLabel">{pt.hour}시</label>
+                      <input className="hourInput" value={loc.accHourly[hIdx].pop}
+                        onChange={e => updateHourly(i, hIdx, 'pop', e.target.value)} placeholder="%" />
+                      <input className="hourInput" value={loc.accHourly[hIdx].mm}
+                        onChange={e => updateHourly(i, hIdx, 'mm', e.target.value)} placeholder="mm" />
                     </div>
                   ))}
                 </div>
@@ -256,8 +270,10 @@ export default function Home() {
         .err { background:#fdecea; color:#b3261e; border:1px solid #f3c2be; padding:8px 10px; border-radius:6px; font-size:12px; margin-bottom:8px; }
         .ok { background:#e6f4ea; color:#1a7a34; border:1px solid #b7e0c3; padding:8px 10px; border-radius:6px; font-size:12px; margin-bottom:8px; }
         .groupTitle { font-size:11px; font-weight:bold; color:#888; margin:8px 0 4px; text-transform:uppercase; letter-spacing:.03em; }
-        .hourlyGrid { display:grid; grid-template-columns: repeat(8, 1fr); gap:6px; }
-        .hourField { min-width: 0; }
+        .hourlyGrid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
+        .hourPair { display:flex; flex-direction:column; gap:3px; border:1px solid #e2e2e2; border-radius:6px; padding:6px; background:#fff; }
+        .hourPairLabel { font-size:11px; color:#666; font-weight:bold; }
+        .hourInput { border:1px solid #ccc; border-radius:5px; padding:5px 6px; font-size:12px; }
         .actions { display:flex; gap:10px; margin:18px 0 26px; flex-wrap:wrap; }
         button.primary { background:#2563eb; color:white; border:none; padding:10px 18px; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer; }
         button.secondary { background:white; color:#2563eb; border:1px solid #2563eb; padding:10px 18px; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer; }
@@ -325,39 +341,52 @@ function SimpleBlock({ loc }) {
         .head { background:#FFFF00; font-weight:bold; }
         .loc { font-weight:bold; white-space: pre-line; line-height:1.25; }
         .srcLabel { font-weight:bold; }
-        .kmaVal, .accVal { background:#BDD7EE; color:#1a4fa0; font-weight:bold; }
+        .kmaVal, .accVal { font-weight:normal; }
         .dash, .mm { color:#333; }
       `}</style>
     </table>
   );
 }
 
-// 상세(시간단위) 모드 표 블록 하나 = 지역 하나, 15개 시간 컬럼. 지역당 한 줄씩 아래로 쌓임.
+// 상세(시간단위) 모드 표 블록 하나 = 지역 하나, 15개 시간 컬럼.
+// 원본 사진과 동일한 5행 구조: 헤더 / 기상청% / 기상청mm / 아큐웨더% / 아큐웨더mm
 function HourlyBlock({ loc }) {
   const nameLabel = loc.address || '지역명';
-  const range = loc.kma?.range || Array(15).fill({ date: '', hour: '--', pop: null });
+  const range = loc.kma?.range || Array(15).fill({ date: '', hour: '--', pop: null, pcp: null });
 
   return (
     <table className="hourly">
       <tbody>
         <tr>
-          <td className="head fixed locHead">{nameLabel}</td>
+          <td className="head fixed locHead">{formatDateLabel(loc.date)}</td>
           <td className="head fixed">시간</td>
           {range.map((pt, idx) => (
             <td className="head fixed" key={idx}>{pt.hour}시</td>
           ))}
         </tr>
         <tr>
-          <td className="loc fixed" rowSpan={2}>{formatDateLabel(loc.date)}</td>
+          <td className="loc fixed" rowSpan={4}>{nameLabel.replace(/ /g, '\n')}</td>
           <td className="srcLabel fixed">기상청</td>
           {range.map((pt, idx) => (
             <td className="kmaVal fixed" key={idx} style={popColorStyle(pt.pop)}>{fmtPct(pt.pop)}</td>
           ))}
         </tr>
         <tr>
+          <td className="srcLabel fixed" />
+          {range.map((pt, idx) => (
+            <td className="mm fixed" key={idx}>{fmtMm(pt.pcp)}</td>
+          ))}
+        </tr>
+        <tr>
           <td className="srcLabel fixed">아큐웨더</td>
           {range.map((pt, idx) => (
-            <td className="accVal fixed" key={idx} style={popColorStyle(loc.accHourly[idx])}>{fmtPct(loc.accHourly[idx])}</td>
+            <td className="accVal fixed" key={idx} style={popColorStyle(loc.accHourly[idx].pop)}>{fmtPct(loc.accHourly[idx].pop)}</td>
+          ))}
+        </tr>
+        <tr>
+          <td className="srcLabel fixed" />
+          {range.map((pt, idx) => (
+            <td className="mm fixed" key={idx}>{fmtMm(loc.accHourly[idx].mm)}</td>
           ))}
         </tr>
       </tbody>
@@ -367,9 +396,9 @@ function HourlyBlock({ loc }) {
         .locHead { width: 100px; }
         td { border: 1px solid #000; text-align:center; font-size:12px; padding:2px 3px; vertical-align:middle; }
         .head { background:#FFFF00; font-weight:bold; }
-        .loc { font-weight:bold; width:100px; font-size:13px; }
+        .loc { font-weight:bold; width:100px; font-size:13px; white-space: pre-line; line-height:1.2; }
         .srcLabel { font-weight:bold; width:70px; }
-        .kmaVal, .accVal { background:#BDD7EE; color:#1a4fa0; font-weight:bold; }
+        .mm { color:#333; }
       `}</style>
     </table>
   );
