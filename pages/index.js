@@ -69,9 +69,9 @@ export default function Home() {
     update(i, 'kmaError', null);
     try {
       const dateParam = loc.date.replaceAll('-', '');
-      let url = `/api/weather?address=${encodeURIComponent(loc.address)}&date=${dateParam}`;
+      let url = `/api/weather?address=${encodeURIComponent(loc.address)}&date=${dateParam}&_t=${Date.now()}`;
       if (detailMode) url += `&startHour=${encodeURIComponent(loc.startHour)}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || '조회 실패');
       update(i, 'kma', json);
