@@ -156,6 +156,9 @@ export default function Home() {
               <div className="ok">
                 ✅ 기상청 값 확인됨 ({loc.kma.granularity === 'short' ? '단기예보 · 시간단위 가능' : '중기예보 · 강수확률만 (mm 없음)'})
                 — D {fmtPct(loc.kma.summary.D.pop)} / N {fmtPct(loc.kma.summary.N.pop)}
+                <div style={{ marginTop: 4, fontSize: 11, color: '#555' }}>
+                  📍 인식된 위치: {loc.kma.geo?.displayName || '(정보 없음)'} (nx={loc.kma.nx}, ny={loc.kma.ny})
+                </div>
                 {loc.kma.debug && (loc.kma.summary.D.pop === null || loc.kma.summary.N.pop === null) && (
                   <details style={{ marginTop: 6, fontSize: 11, color: '#555' }}>
                     <summary>값이 비어있어요 — 디버그 정보 보기</summary>
