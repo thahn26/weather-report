@@ -159,6 +159,9 @@ export default function Home() {
                 <div style={{ marginTop: 4, fontSize: 11, color: '#555' }}>
                   📍 인식된 위치: {loc.kma.geo?.displayName || '(정보 없음)'} (nx={loc.kma.nx}, ny={loc.kma.ny})
                 </div>
+                <div style={{ marginTop: 2, fontSize: 11, color: '#555' }}>
+                  🕒 이 예보의 발표시각: {loc.kma.base_date} {loc.kma.base_time} (기상청 발표기준)
+                </div>
                 {loc.kma.debug && (loc.kma.summary.D.pop === null || loc.kma.summary.N.pop === null) && (
                   <details style={{ marginTop: 6, fontSize: 11, color: '#555' }}>
                     <summary>값이 비어있어요 — 디버그 정보 보기</summary>
