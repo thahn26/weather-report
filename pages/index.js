@@ -1,0 +1,263 @@
+import { useState, useRef } from 'react';
+import Head from 'next/head';
+
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+function emptyLoc() {
+  return {
+    date: todayStr(),
+    address: '',
+    accD: '', accN: '', mmD: '', mmN: '',
+    kma: null,      // API 조회 결과
+    kmaError: null,
+    loading: false,
+  };
+}
+
+function fmtPct(v) {
+  if (v === null || v === undefined || v === '') return '-';
+  const s = String(v).replace('%', '');
+  return `${s}%`;
+}
+function fmtMm(v) {
+  if (v === null || v === undefined || v === '' || v === 0) return '-';
+  const s = String(v).replace('mm', '');
+  return `${s}mm`;
+}
+
+export default function Home() {
+  const [locations, setLocations] = useState([emptyLoc()]);
+  const [detailMode, setDetailMode] = useState(false); // false=간단(D/N), true=시간단위
+  const [built, setBuilt] = useState(false);
+  const captureRef = useRef(null);
+
+  function update(i, key, val) {
+    setLocations(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: val } : l));
+  }
+  function addLoc() { setLocations(prev => [...prev, emptyLoc()]); }
+  function removeLoc(i) { setLocations(prev => prev.filter((_, idx) => idx !== i)); }
+
+  async function fetchKma(i) {
+    const loc = locations[i];
+    if (!loc.address || !loc.date) return;
+    update(i, 'loading', true);
+    update(i, 'kmaError', null);
+    try {
+      const dateParam = loc.date.replaceAll('-', '');
+      const res = await fetch(`/api/weather?address=${encodeURIComponent(loc.address)}&date=${dateParam}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '조회 실패');
+      update(i, 'kma', json);
+    } catch (err) {
+      update(i, 'kmaError', err.message);
+      update(i, 'kma', null);
+    } finally {
+      update(i, 'loading', false);
+    }
+  }
+
+  async function fetchAll() {
+    for (let i = 0; i < locations.length; i++) {
+      await fetchKma(i);
+    }
+  }
+
+  function buildTable() {
+    setBuilt(true);
+    setTimeout(() => captureRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+  }
+
+  async function downloadImage() {
+    const html2canvas = (await import('html2canvas')).default;
+    const canvas = await html2canvas(captureRef.current, { backgroundColor: '#ffffff', scale: 2 });
+    const link = document.createElement('a');
+    link.download = '날씨비교표.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+
+  return (
+    <>
+      <Head><title>촬영지 날씨 비교표</title></Head>
+      <main className="wrap">
+        <h1>촬영지 날씨 비교표</h1>
+        <p className="sub">지역과 날짜를 입력하고 "기상청 조회"를 누르면 자동으로 값이 채워져요. 아큐웨더는 직접 입력해주세요.</p>
+
+        <label className="modeToggle">
+          <input type="checkbox" checked={detailMode} onChange={e => setDetailMode(e.target.checked)} />
+          시간단위 상세 표로 만들기 (체크 해제 시 D/N 간단 표)
+        </label>
+
+        {locations.map((loc, i) => (
+          <div className="card" key={i}>
+            <div className="cardHead">
+              <span>지역 {i + 1}</span>
+              {locations.length > 1 && <button className="rm" onClick={() => removeLoc(i)}>삭제</button>}
+            </div>
+            <div className="row">
+              <div className="field">
+                <label>날짜</label>
+                <input type="date" value={loc.date} onChange={e => update(i, 'date', e.target.value)} />
+              </div>
+              <div className="field grow">
+                <label>지역 (예: 파주시 탄현면)</label>
+                <input type="text" value={loc.address} placeholder="파주시 탄현면"
+                  onChange={e => update(i, 'address', e.target.value)} />
+              </div>
+              <button className="fetchBtn" disabled={loc.loading} onClick={() => fetchKma(i)}>
+                {loc.loading ? '조회중...' : '기상청 조회'}
+              </button>
+            </div>
+
+            {loc.kmaError && <div className="err">⚠ {loc.kmaError}</div>}
+            {loc.kma && (
+              <div className="ok">
+                ✅ 기상청 값 확인됨 ({loc.kma.granularity === 'short' ? '단기예보 · 시간단위 가능' : '중기예보 · 강수확률만 (mm 없음)'})
+                — D {fmtPct(loc.kma.summary.D.pop)} / N {fmtPct(loc.kma.summary.N.pop)}
+              </div>
+            )}
+
+            <div className="groupTitle">아큐웨더 (직접입력)</div>
+            <div className="row">
+              <div className="field"><label>D %</label><input value={loc.accD} onChange={e => update(i, 'accD', e.target.value)} placeholder="72" /></div>
+              <div className="field"><label>N %</label><input value={loc.accN} onChange={e => update(i, 'accN', e.target.value)} placeholder="55" /></div>
+              <div className="field"><label>D mm</label><input value={loc.mmD} onChange={e => update(i, 'mmD', e.target.value)} placeholder="2.1" /></div>
+              <div className="field"><label>N mm</label><input value={loc.mmN} onChange={e => update(i, 'mmN', e.target.value)} placeholder="1" /></div>
+            </div>
+          </div>
+        ))}
+
+        <div className="actions">
+          <button className="ghost" onClick={addLoc}>+ 지역 추가</button>
+          <button className="secondary" onClick={fetchAll}>전체 기상청 조회</button>
+          <button className="primary" onClick={buildTable}>표 만들기</button>
+          {built && <button className="secondary" onClick={downloadImage}>이미지로 저장</button>}
+        </div>
+
+        {built && (
+          <div className="tableOuter">
+            <div ref={captureRef} className="capture">
+              {chunk(locations, 2).map((pair, ri) => (
+                <div className="pairRow" key={ri}>
+                  {pair.map((loc, ci) => (
+                    <LocBlock key={ci} loc={loc} detailMode={detailMode} />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </main>
+      <style jsx global>{`
+        * { box-sizing: border-box; }
+        body { margin:0; font-family: Arial, "Malgun Gothic", sans-serif; color:#111; background:#fff; }
+      `}</style>
+      <style jsx>{`
+        .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 60px; }
+        h1 { font-size: 20px; margin: 0 0 4px; }
+        .sub { font-size: 13px; color:#555; margin: 0 0 16px; }
+        .modeToggle { display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:16px; }
+        .card { border:1px solid #ddd; border-radius:8px; padding:14px 16px; margin-bottom:12px; background:#fafafa; }
+        .cardHead { display:flex; justify-content:space-between; margin-bottom:8px; font-weight:bold; font-size:13px; color:#333; }
+        .rm { background:none; border:none; color:#b33; cursor:pointer; font-size:13px; font-weight:bold; }
+        .row { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:8px; }
+        .field { display:flex; flex-direction:column; gap:3px; min-width: 90px; }
+        .field.grow { flex:1; min-width:180px; }
+        .field label { font-size:11px; color:#666; }
+        .field input { border:1px solid #ccc; border-radius:5px; padding:7px 8px; font-size:13px; }
+        .fetchBtn { background:#2563eb; color:white; border:none; padding:9px 14px; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer; height:34px; }
+        .fetchBtn:disabled { background:#9ab4e8; }
+        .err { background:#fdecea; color:#b3261e; border:1px solid #f3c2be; padding:8px 10px; border-radius:6px; font-size:12px; margin-bottom:8px; }
+        .ok { background:#e6f4ea; color:#1a7a34; border:1px solid #b7e0c3; padding:8px 10px; border-radius:6px; font-size:12px; margin-bottom:8px; }
+        .groupTitle { font-size:11px; font-weight:bold; color:#888; margin:8px 0 4px; text-transform:uppercase; letter-spacing:.03em; }
+        .actions { display:flex; gap:10px; margin:18px 0 26px; flex-wrap:wrap; }
+        button.primary { background:#2563eb; color:white; border:none; padding:10px 18px; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer; }
+        button.secondary { background:white; color:#2563eb; border:1px solid #2563eb; padding:10px 18px; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer; }
+        button.ghost { background:white; color:#444; border:1px dashed #999; padding:9px 14px; border-radius:6px; font-size:13px; cursor:pointer; }
+        .tableOuter { overflow-x:auto; }
+        .capture { background:white; padding:10px; display:inline-block; }
+      `}</style>
+    </>
+  );
+}
+
+function chunk(arr, n) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+// 표 블록 하나 = 지역 하나. 크기는 항상 고정(fixed width/height)이라
+// 지역이 늘어나도 줄어들지 않고 옆/아래로 늘어납니다.
+function LocBlock({ loc, detailMode }) {
+  const dateLabel = loc.date ? formatDateLabel(loc.date) : '날짜';
+  const nameLabel = loc.address || '지역명';
+  const kmaD = loc.kma ? fmtPct(loc.kma.summary.D.pop) : '-';
+  const kmaN = loc.kma ? fmtPct(loc.kma.summary.N.pop) : '-';
+  const accD = loc.accD ? fmtPct(loc.accD) : '-';
+  const accN = loc.accN ? fmtPct(loc.accN) : '-';
+  const mmD = loc.mmD ? fmtMm(loc.mmD) : '-';
+  const mmN = loc.mmN ? fmtMm(loc.mmN) : '-';
+
+  const canDetail = detailMode && loc.kma && loc.kma.granularity === 'short';
+
+  return (
+    <table className="weather">
+      <tbody>
+        <tr>
+          <td className="head fixed">{dateLabel}</td>
+          <td className="head fixed">시간</td>
+          <td className="head fixed">D</td>
+          <td className="head fixed">N</td>
+        </tr>
+        <tr>
+          <td className="loc fixed" rowSpan={4}>{nameLabel.replace(/ /g, '\n')}</td>
+          <td className="srcLabel fixed">기상청</td>
+          <td className="kmaVal fixed">{kmaD}</td>
+          <td className="kmaVal fixed">{kmaN}</td>
+        </tr>
+        <tr>
+          <td className="fixed" />
+          <td className="dash fixed">-</td>
+          <td className="dash fixed">-</td>
+        </tr>
+        <tr>
+          <td className="srcLabel fixed">아큐웨더</td>
+          <td className="accVal fixed">{accD}</td>
+          <td className="accVal fixed">{accN}</td>
+        </tr>
+        <tr>
+          <td className="fixed" />
+          <td className="mm fixed">{mmD}</td>
+          <td className="mm fixed">{mmN}</td>
+        </tr>
+        {canDetail && (
+          <tr>
+            <td colSpan={4} className="detailNote fixed">
+              (시간단위 데이터는 아래 상세 시간표 참고)
+            </td>
+          </tr>
+        )}
+      </tbody>
+      <style jsx>{`
+        .weather { border-collapse: collapse; table-layout: fixed; }
+        .fixed { width: 110px; height: 34px; }
+        td { border: 1px solid #000; text-align:center; font-size:15px; padding:2px 6px; vertical-align:middle; }
+        .head { background:#FFFF00; font-weight:bold; }
+        .loc { font-weight:bold; white-space: pre-line; line-height:1.25; }
+        .srcLabel { font-weight:bold; }
+        .kmaVal, .accVal { background:#BDD7EE; color:#1a4fa0; font-weight:bold; }
+        .dash, .mm { color:#333; }
+        .detailNote { font-size:11px; color:#888; height:auto; }
+      `}</style>
+    </table>
+  );
+}
+
+function formatDateLabel(isoDate) {
+  const [y, m, d] = isoDate.split('-');
+  return `${parseInt(m, 10)}월 ${parseInt(d, 10)}일`;
+}
